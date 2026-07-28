@@ -193,11 +193,16 @@ and report — a duplicated project is a minor annoyance, a lost one is not.
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/registry.sh" set "<original-path>" declined
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/registry.sh" set "<archived-path>" declined
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/registry.sh" set "<archive-root>" declined
 ```
 
-Recording the *original* path stops the hook from offering onboarding if the
-directory is ever recreated. When the archive root sits outside `~/claude`, no
-entry is needed for it.
+Register **all three**. The original stops the hook if the directory is ever
+recreated. The archived path matters because moving a project outside `~/claude`
+does *not* stop the hook — it fires in any directory not in its noise list, so
+the move re-arms the offer at the new location. The root covers `cd`-ing there
+directly; it does not cover the projects beneath it, since the hook matches
+exact paths rather than prefixes.
 
 Remove the `linear-sync` entry only if the project is going away entirely.
 

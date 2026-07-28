@@ -149,13 +149,22 @@ archiving is a good moment to rotate it.
 
 ## The archive root
 
-Put it **outside** `~/claude`, so the SessionStart hook does not fire inside
-archived projects. `~/claude-archive/` works.
+`~/claude-archive/` works. Any location is fine — but note what does **not**
+follow from it:
 
-Keeping it inside `~/claude` is acceptable if the archive root itself is recorded
-as `declined` in the project-optimizer registry — but the hook checks per
-directory, so each archived project would still need its own entry. Outside is
-simpler.
+**Being outside `~/claude` does not stop the SessionStart hook.** The hook fires
+in any directory that is not in its noise list, wherever it sits. Moving a
+project to an archive root therefore re-arms the offer at the new path unless it
+is registered. Record both:
+
+```bash
+registry.sh set "<original-path>" declined     # if the directory is recreated
+registry.sh set "<archived-path>" declined     # the new location
+registry.sh set "<archive-root>" declined      # once, covers cd-ing to the root
+```
+
+The hook matches exact paths, not prefixes, so registering the archive root does
+not cover the projects beneath it — each archived project needs its own entry.
 
 Suggested layout, keeping each project's two halves together:
 
