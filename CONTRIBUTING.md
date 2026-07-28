@@ -87,9 +87,17 @@ These are non-negotiable, and each exists because it was violated once:
 Fill in the template — the verification section is the part that matters. State
 what you actually ran and paste the output.
 
-CI runs JSON validation, `bash -n`, `shellcheck -S error`, and the test suite.
-The shellcheck gate is deliberately loose so style opinions can't turn the badge
-red; tightening it to `-S warning` is a welcome PR on its own.
+CI runs JSON validation, `bash -n`, `shellcheck -S warning`, and the test suite.
+The codebase is clean at that level — keep it that way rather than adding
+`# shellcheck disable` comments. `-S info` and `-S style` surface a handful more
+stylistic findings if you want to go further.
+
+Install shellcheck locally to check before pushing:
+
+```bash
+brew install shellcheck
+shellcheck -S warning scripts/*.sh tests/*.sh
+```
 
 ## Reporting bugs
 

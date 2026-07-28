@@ -242,8 +242,21 @@ if [ "$SKIP_GITHUB" -eq 0 ] && [ -n "$GH_OWNER" ] && command -v gh >/dev/null 2>
       "repos/${GH_OWNER}/${GH_REPO}/branches/${DEF_BRANCH}/protection" \
       >/dev/null 2>&1 && PROTECTED=true
 
-    WORKFLOWS="$(ls "$DIR/.github/workflows/" 2>/dev/null | grep -E '\.ya?ml$' || true)"
-    ISSUE_TPLS="$(ls "$DIR/.github/ISSUE_TEMPLATE/" 2>/dev/null || true)"
+    # Listed with find + basename rather than `ls | grep`: filenames are
+    # untrusted, and ls output is not safely parseable (SC2010).
+    WORKFLOWS=""
+    if [ -d "$DIR/.github/workflows" ]; then
+      while IFS= read -r wf; do
+        [ -n "$wf" ] && WORKFLOWS="${WORKFLOWS}${wf##*/}"$'\n'
+      done < <(find "$DIR/.github/workflows" -maxdepth 1 -type f \
+                 \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | sort)
+    fi
+    ISSUE_TPLS=""
+    if [ -d "$DIR/.github/ISSUE_TEMPLATE" ]; then
+      while IFS= read -r it; do
+        [ -n "$it" ] && ISSUE_TPLS="${ISSUE_TPLS}${it##*/}"$'\n'
+      done < <(find "$DIR/.github/ISSUE_TEMPLATE" -maxdepth 1 -type f 2>/dev/null | sort)
+    fi
 
     PR_TPL=false
     for p in .github/pull_request_template.md .github/PULL_REQUEST_TEMPLATE.md \
