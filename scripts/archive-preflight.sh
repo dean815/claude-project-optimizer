@@ -82,6 +82,13 @@ if git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
   # branch as local-only.
   while IFS='|' read -r name upstream track; do
     [ -z "$name" ] && continue
+    # A branch whose tip is reachable from ANY remote-tracking ref is safe,
+    # whatever its upstream is configured to be — it may be backed up by a
+    # different remote than the one it tracks.
+    tip="$(git -C "$DIR" rev-parse "$name" 2>/dev/null || true)"
+    if [ -n "$tip" ] && [ -n "$(git -C "$DIR" branch -r --contains "$tip" 2>/dev/null)" ]; then
+      continue
+    fi
     if [ -z "$upstream" ] || printf '%s' "$track" | grep -q 'ahead'; then
       UNMERGED="${UNMERGED}${name}"$'\n'
     fi
@@ -122,17 +129,25 @@ fi
 # still reads 0 while the remote no longer has them. Verify against the live
 # remote before believing "everything is pushed" — this is the check that stands
 # between an archive and silently deleting the only copy of a history.
-EVER_FETCHED=false; REMOTE_CHECKED=false; HEAD_ON_REMOTE=false
+EVER_FETCHED=false; REMOTE_CHECKED=false; HEAD_ON_REMOTE=false; REMOTES_WITH_HEAD=""
 if [ "$IS_REPO" = true ]; then
   { [ -f "$DIR/.git/FETCH_HEAD" ] || [ -f "$(git -C "$DIR" rev-parse --git-common-dir 2>/dev/null)/FETCH_HEAD" ]; } \
     && EVER_FETCHED=true
-  if [ -n "$REMOTE" ] && [ "$SKIP_GITHUB" -eq 0 ]; then
-    LS="$(run_bounded 20 git -C "$DIR" ls-remote --heads origin || true)"
-    if [ -n "$LS" ]; then
+  if [ "$SKIP_GITHUB" -eq 0 ]; then
+    HEAD_SHA="$(git -C "$DIR" rev-parse HEAD 2>/dev/null || true)"
+    # Check EVERY configured remote, not just origin. A backup or -dev remote
+    # holding the history counts, and treating origin as the only one that
+    # matters reports a fully-backed-up repo as unbacked.
+    while IFS= read -r rname; do
+      [ -z "$rname" ] && continue
+      LS="$(run_bounded 20 git -C "$DIR" ls-remote --heads --tags "$rname" || true)"
+      [ -z "$LS" ] && continue
       REMOTE_CHECKED=true
-      HEAD_SHA="$(git -C "$DIR" rev-parse HEAD 2>/dev/null || true)"
-      [ -n "$HEAD_SHA" ] && printf '%s' "$LS" | grep -q "$HEAD_SHA" && HEAD_ON_REMOTE=true
-    fi
+      if [ -n "$HEAD_SHA" ] && printf '%s' "$LS" | grep -q "$HEAD_SHA"; then
+        HEAD_ON_REMOTE=true
+        REMOTES_WITH_HEAD="${REMOTES_WITH_HEAD}${rname}"$'\n'
+      fi
+    done < <(git -C "$DIR" remote 2>/dev/null)
   fi
 fi
 
@@ -219,6 +234,7 @@ jq -n \
   --argjson everFetched "$EVER_FETCHED" \
   --argjson remoteChecked "$REMOTE_CHECKED" \
   --argjson headOnRemote "$HEAD_ON_REMOTE" \
+  --argjson remotesWithHead "$(printf '%s\n' "$REMOTES_WITH_HEAD" | lines_to_json)" \
   --argjson unmergedBranches "$(printf '%s\n' "$UNMERGED" | lines_to_json)" \
   --argjson worktrees "$WORKTREES_JSON" \
   --argjson untrackedSensitive "$(printf '%s\n' "$UNTRACKED_SENSITIVE" | lines_to_json)" \
@@ -232,7 +248,7 @@ jq -n \
     git: {isRepo:$isRepo, remote:$remote, uncommitted:$uncommitted,
           unpushed:$unpushed, noUpstream:$noUpstream, stashes:$stashes,
           everFetched:$everFetched, remoteChecked:$remoteChecked,
-          headOnRemote:$headOnRemote,
+          headOnRemote:$headOnRemote, remotesWithHead:$remotesWithHead,
           unmergedBranches:$unmergedBranches, worktrees:$worktrees},
     untrackedSensitive: $untrackedSensitive,
     history: {dirs:$history, totalKB:$historyTotalKB, count:($history|length)},
@@ -240,11 +256,13 @@ jq -n \
     github: $github,
     blockers: [
       (if $isRepo and $uncommitted > 0 then "uncommitted changes (\($uncommitted) files)" else empty end),
-      (if $isRepo and $noUpstream and $unpushed > 0 then "no remote — \($unpushed) commits exist only here" else empty end),
-      (if $isRepo and ($noUpstream|not) and $unpushed > 0 then "\($unpushed) unpushed commits" else empty end),
+      (if $isRepo and $noUpstream and $unpushed > 0 and ($headOnRemote|not)
+         then "no remote — \($unpushed) commits exist only here" else empty end),
+      (if $isRepo and ($noUpstream|not) and $unpushed > 0 and ($headOnRemote|not)
+         then "\($unpushed) commits ahead of the tracked branch and not on any configured remote" else empty end),
       (if $stashes > 0 then "\($stashes) stash(es)" else empty end),
       (if $remoteChecked and ($headOnRemote|not)
-         then "LOCAL HEAD IS NOT ON THE ORIGIN REMOTE — verified live just now, not inferred from the cached tracking ref. This says nothing about repositories that are not configured as remotes: a second copy may exist elsewhere, including in a PRIVATE repo that does not appear in public listings. Search for one (`gh repo list <owner> --limit 200` covers private repos) before concluding these commits are unique, and do not remove anything until a copy is confirmed."
+         then "LOCAL HEAD IS ON NO CONFIGURED REMOTE — every remote was queried live just now, not inferred from cached tracking refs. This still says nothing about repositories that are not configured as remotes: a copy may exist in one, including a PRIVATE repo that does not appear in public listings. Search (`gh repo list <owner> --limit 200` covers private repos) and prove any candidate by SHA before concluding these commits are unique. Remove nothing until a copy is confirmed."
          else empty end),
       (if $isRepo and $remote != "" and ($remoteChecked|not)
          then "could not reach the remote — the unpushed count compares against a cached tracking ref that another clone may have force-pushed past, so it cannot be trusted. Run `git fetch` and re-run before removing anything."

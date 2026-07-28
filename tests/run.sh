@@ -286,14 +286,27 @@ assert "$([ "${S_UNPUSHED:-1}" -eq 0 ] && echo true || echo false)" \
   "stale tracking ref still reports 0 unpushed (the trap)"
 assert "$([ "$S_ONREMOTE" = "false" ] && echo true || echo false)" \
   "force-pushed-over HEAD is detected as absent from the remote"
-assert "$(printf '%s' "$SP_JSON" | jq -e '.blockers | map(select(test("NOT ON THE ORIGIN REMOTE"))) | length > 0' >/dev/null 2>&1 && echo true || echo false)" \
+assert "$(printf '%s' "$SP_JSON" | jq -e '.blockers | map(select(test("ON NO CONFIGURED REMOTE"))) | length > 0' >/dev/null 2>&1 && echo true || echo false)" \
   "stale remote raises a blocker despite unpushed == 0"
 
-# The blocker must not overclaim: it only checked origin, so it cannot assert the
+# The blocker must not overclaim: it only checked remotes, so it cannot assert the
 # commits exist nowhere else. A second copy in a non-remote (often private) repo
 # is common, and asserting uniqueness led to a wrong conclusion in real use.
 assert "$(printf '%s' "$SP_JSON" | jq -e '.blockers | map(select(test("exist only in this clone"))) | length == 0' >/dev/null 2>&1 && echo true || echo false)" \
   "blocker does not claim uniqueness it did not verify"
+
+# A second remote holding the history counts. Checking only `origin` reported a
+# fully-backed-up repo as unbacked.
+BACKUP="$TMP/backup.git"; git init -q --bare "$BACKUP" 2>/dev/null
+( cd "$SR" && git remote add backup "$BACKUP" >/dev/null 2>&1 \
+  && git push -q backup HEAD:refs/heads/main >/dev/null 2>&1 ) || true
+MR_JSON="$(bash "$ROOT/scripts/archive-preflight.sh" "$SR" 2>/dev/null)"
+assert "$([ "$(printf '%s' "$MR_JSON" | jq -r '.git.headOnRemote')" = "true" ] && echo true || echo false)" \
+  "HEAD on a non-origin remote counts as backed up"
+assert "$(printf '%s' "$MR_JSON" | jq -e '.git.remotesWithHead | index("backup") != null' >/dev/null 2>&1 && echo true || echo false)" \
+  "the remote holding HEAD is named in remotesWithHead"
+assert "$(printf '%s' "$MR_JSON" | jq -e '.blockers | map(select(test("ON NO CONFIGURED REMOTE"))) | length == 0' >/dev/null 2>&1 && echo true || echo false)" \
+  "no unbacked blocker once another remote has the history"
 
 # --------------------------------------------------------------------------
 echo
