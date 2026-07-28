@@ -7,10 +7,31 @@ archetype, and let the user correct it.
 Archetypes are a starting point, not a straitjacket. When a project sits between
 two, say so and take the stricter GitHub posture of the pair.
 
+## Classify in this order
+
+Check the first two before attempting any code archetype. Matching a directory
+with no code against a code profile produces a confident, useless plan.
+
+1. **`empty`** — `layout.contentFiles == 0`. Nothing to onboard.
+2. **`context-workspace`** — `layout.sourceFiles == 0`. No code, whatever else is
+   present. With `docFiles > 0` it is a notes directory; with `docFiles == 0` it
+   holds only stray config or data and is closer to empty.
+3. Everything else — match the signal table below.
+
+`layout.contentFiles` excludes dependency trees, build output, and tooling state
+belonging to Claude rather than the project (`.remember/`, `.claude/`). A
+directory holding one `settings.local.json` counts as empty, which is what it is.
+
+**Absence of git is not a signal here** — plenty of real projects are never
+initialized. Use `sourceFiles`, which counts code, config-as-code
+(`Dockerfile`, `*.yml`, `*.toml`), markup, and notebooks.
+
 ## Signal table
 
 | Archetype | Primary signals from scan |
 |---|---|
+| `empty` | `contentFiles == 0` |
+| `context-workspace` | `sourceFiles == 0` |
 | `claude-plugin` | `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/hooks.json` |
 | `mcp-server` | `mcp-sdk` in frameworks, `@modelcontextprotocol` dep, `fastmcp`, server entrypoint |
 | `web-app` | `next`, `react`, `vue`, `svelte`, `astro`, `remix`, `nuxt`, `vite` in frameworks |
@@ -21,6 +42,45 @@ two, say so and take the stricter GitHub posture of the pair.
 | `experiment` | Few commits, no README, no remote, scratch-shaped names |
 
 ## Profiles
+
+### empty
+
+No content at all — often a directory created for a Claude conversation that
+never produced files.
+
+**Do not onboard.** There is nothing to configure, and creating a CLAUDE.md,
+README, or git repo for an empty directory manufactures work rather than
+resolving any. Say the directory is empty and offer `project-optimizer:skip`.
+
+### context-workspace
+
+Notes, research, specs, and conversation artifacts. No source code. Common when a
+directory exists to give Claude a place to think about a system whose code lives
+elsewhere — or is not code at all.
+
+- **Plugins**: leave global defaults. There is no build, test, or language here,
+  so language and domain scoping have nothing to act on
+- **MCP**: leave alone
+- **CLAUDE.md**: the *only* thing worth proposing, and only when the directory has
+  real accumulated content. Two or three sentences: what this workspace is for,
+  where the actual system lives if it lives elsewhere, and what not to look for
+  here. Nothing more
+- **Layout**: no expectations. Notes directories are organized by their author's
+  memory, and imposing `src/`-style structure on them is actively unhelpful
+- **GitHub rigor**: none. Do not propose `git init`, and do not propose a remote
+
+The correct outcome is usually **`skip`**, or at most a short CLAUDE.md. Say so
+directly rather than assembling a plan that mostly reads "not applicable".
+
+Two cautions specific to this archetype:
+
+- A workspace can accumulate credential files (`.env`, `*-secrets.env`) without
+  git ever noticing, because `riskyTracked` only inspects **tracked** files. If
+  such a file is present and the directory is not a repo, mention it — not as a
+  leak, but as a reason not to run `git init` here casually.
+- Do not confuse this with a real project that simply lacks git. A directory with
+  a `docker-compose.yml` and three shell scripts is infrastructure, not notes:
+  `sourceFiles > 0` means classify it normally.
 
 ### claude-plugin
 

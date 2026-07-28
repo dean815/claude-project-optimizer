@@ -55,20 +55,34 @@ require `jq`; proceeding without it produces guesses rather than facts.
 ### 2. Classify the archetype
 
 Match the scan against the profiles in
-`${CLAUDE_PLUGIN_ROOT}/references/archetypes.md`. Each archetype carries a
-recommended plugin set, MCP posture, CLAUDE.md skeleton, expected layout, and
-GitHub rigor level. The scan emits `stack.hasBin` (separates `cli-tool` from
-`library`) and `stack.hasDataDir` specifically to discriminate between them.
+`${CLAUDE_PLUGIN_ROOT}/references/archetypes.md`, following its stated
+classification order. Each archetype carries a recommended plugin set, MCP
+posture, CLAUDE.md skeleton, expected layout, and GitHub rigor level. The scan
+emits `stack.hasBin` (separates `cli-tool` from `library`), `stack.hasDataDir`,
+and `layout.sourceFiles` / `docFiles` / `contentFiles` specifically to
+discriminate between them.
 
 State the inferred archetype and let the user correct it, rather than asking them
 to pick from a blank list. When signals are genuinely ambiguous, offer the two
 best candidates.
 
-**Stop early on `experiment`.** When the classification lands there — few commits,
-no README, no remote, scratch-shaped name — do not run the full workflow. Propose
-the smallest useful change set, often a short CLAUDE.md and nothing else, or offer
-`project-optimizer:skip` with a snooze, and say why. Onboarding a scratch
-directory is overhead that produces nothing.
+**Three archetypes end the workflow early.** Recognizing them is the single
+highest-value step here, because the hook fires in every unregistered directory
+and many of those are not projects at all:
+
+| Classification | Signal | Response |
+|---|---|---|
+| `empty` | `contentFiles == 0` | Nothing to onboard. Say so, offer `skip`. Stop. |
+| `context-workspace` | `sourceFiles == 0` | Notes, not code. Offer `skip`, or at most a two-sentence CLAUDE.md. Stop. |
+| `experiment` | Few commits, no README, no remote, scratch-shaped name | Smallest useful change set, or `skip` with a snooze. |
+
+In each case say plainly why the full workflow does not apply. Do not assemble a
+four-area plan whose items are mostly "not applicable" — that wastes the user's
+review attention and makes the tool feel indiscriminate.
+
+Note that **absence of git is not itself a signal** of any of these. A directory
+with `docker-compose.yml` and a few shell scripts is infrastructure that simply
+was never initialized; classify it normally and propose `git init`.
 
 ### 3. Interview only the gaps
 

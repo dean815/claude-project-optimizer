@@ -94,6 +94,60 @@ bash "$ROOT/scripts/scan-project.sh" '/nonexistent/pa"th' --no-github 2>/dev/nul
 
 # --------------------------------------------------------------------------
 echo
+echo "[composition]"
+# The audit skill ranks on recency, so it must come from the scan.
+LCE="$(bash "$ROOT/scripts/scan-project.sh" "$REPO" --no-github 2>/dev/null \
+  | jq -r '.git.lastCommitEpoch')"
+assert "$([ "${LCE:-0}" -gt 0 ] && echo true || echo false)" \
+  "lastCommitEpoch is populated for a repo"
+
+NOREPO="$TMP/plain"; mkdir -p "$NOREPO"; printf 'hi\n' > "$NOREPO/notes.md"
+NR="$(bash "$ROOT/scripts/scan-project.sh" "$NOREPO" --no-github 2>/dev/null)"
+assert "$([ "$(printf '%s' "$NR" | jq -r '.git.lastCommit')" = "null" ] && echo true || echo false)" \
+  "lastCommit is null outside a repo"
+
+# A directory holding only conversation history is empty, not substantial:
+# .remember/ must be pruned or every workspace looks like a real project.
+WS="$TMP/workspace"; mkdir -p "$WS/.remember"
+for i in 1 2 3 4 5; do printf 'log\n' > "$WS/.remember/day-$i.md"; done
+printf '# notes\n' > "$WS/plan.md"
+WSJ="$(bash "$ROOT/scripts/scan-project.sh" "$WS" --no-github 2>/dev/null)"
+CF="$(printf '%s' "$WSJ" | jq -r '.layout.contentFiles')"
+SF="$(printf '%s' "$WSJ" | jq -r '.layout.sourceFiles')"
+DF="$(printf '%s' "$WSJ" | jq -r '.layout.docFiles')"
+assert "$([ "${CF:-0}" -eq 1 ] && echo true || echo false)" \
+  ".remember/ is excluded from contentFiles (got ${CF:-?}, want 1)"
+assert "$([ "${SF:-1}" -eq 0 ] && [ "${DF:-0}" -eq 1 ] && echo true || echo false)" \
+  "docs-only directory reads as context-workspace (source=${SF:-?}, docs=${DF:-?})"
+
+# A real project that merely lacks git must NOT read as a workspace.
+INFRA="$TMP/infra"; mkdir -p "$INFRA"
+printf 'services:\n' > "$INFRA/docker-compose.yml"
+printf '#!/bin/bash\n' > "$INFRA/deploy.sh"
+printf '# readme\n' > "$INFRA/README.md"
+ISF="$(bash "$ROOT/scripts/scan-project.sh" "$INFRA" --no-github 2>/dev/null \
+  | jq -r '.layout.sourceFiles')"
+assert "$([ "${ISF:-0}" -ge 2 ] && echo true || echo false)" \
+  "un-gitted infra project is not mistaken for notes (source=${ISF:-?})"
+
+# Claude's own config is tooling state, not project content. A directory holding
+# only settings.local.json is empty for every purpose this scan serves.
+CFGONLY="$TMP/cfgonly"; mkdir -p "$CFGONLY/.claude"
+printf '{}\n' > "$CFGONLY/.claude/settings.local.json"
+CC="$(bash "$ROOT/scripts/scan-project.sh" "$CFGONLY" --no-github 2>/dev/null \
+  | jq -r '.layout.contentFiles')"
+assert "$([ "${CC:-1}" -eq 0 ] && echo true || echo false)" \
+  ".claude/ is excluded from contentFiles (got ${CC:-?}, want 0)"
+
+# Empty directory.
+mkdir -p "$TMP/void"
+VCF="$(bash "$ROOT/scripts/scan-project.sh" "$TMP/void" --no-github 2>/dev/null \
+  | jq -r '.layout.contentFiles')"
+assert "$([ "${VCF:-1}" -eq 0 ] && echo true || echo false)" \
+  "empty directory reports contentFiles 0"
+
+# --------------------------------------------------------------------------
+echo
 echo "[hook]"
 # Fixture in a location the hook treats as a real project, not a noise dir.
 HOOK_REPO="$HOOK_TMP/proj"

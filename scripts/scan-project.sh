@@ -75,12 +75,21 @@ lines_to_json_unique() { jq -R -s 'split("\n") | map(select(length > 0)) | uniqu
 # --- Git ------------------------------------------------------------------
 IS_REPO=false
 REMOTE=""; GH_OWNER=""; GH_REPO=""; CUR_BRANCH=""; DIRTY=false; COMMITS=0
+LAST_COMMIT_EPOCH=0; LAST_COMMIT_ISO=""
 if git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
   IS_REPO=true
   REMOTE="$(git -C "$DIR" remote get-url origin 2>/dev/null || true)"
   CUR_BRANCH="$(git -C "$DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   COMMITS="$(git -C "$DIR" rev-list --count HEAD 2>/dev/null || echo 0)"
   [ -n "$(git -C "$DIR" status --porcelain 2>/dev/null)" ] && DIRTY=true
+  # Recency — the audit skill ranks on this, so it must come from the scan
+  # rather than an out-of-band git call the report cannot reproduce.
+  LAST_COMMIT_EPOCH="$(git -C "$DIR" log -1 --format=%ct 2>/dev/null || echo 0)"
+  if [ "${LAST_COMMIT_EPOCH:-0}" -gt 0 ] 2>/dev/null; then
+    LAST_COMMIT_ISO="$(git -C "$DIR" log -1 --format=%cI 2>/dev/null || true)"
+  else
+    LAST_COMMIT_EPOCH=0
+  fi
   if printf '%s' "$REMOTE" | grep -qi 'github\.com'; then
     SLUG="$(printf '%s' "$REMOTE" \
       | sed -E 's#^git@github\.com:##; s#^https?://github\.com/##; s#\.git$##')"
@@ -169,6 +178,32 @@ ROOT_FILE_COUNT="$(printf '%s\n' "$ROOT_FILES" | grep -c . || true)"
 STRAY="$(printf '%s\n' "$ROOT_FILES" \
   | grep -iE '^(test|tmp|temp|scratch|untitled|foo|bar|copy|new|draft|notes?)[-_ .]|\.(bak|old|orig|tmp|swp|log)$|[ ]|^Untitled' \
   || true)"
+
+# Content composition. Distinguishes a real project that simply lacks git from a
+# directory that only ever held conversation context.
+#
+# Pruned: dependency and build trees, plus tooling state that belongs to Claude
+# rather than to the project (.remember, .claude). Counting those makes an empty
+# directory look substantial — a folder holding one settings.local.json is empty
+# for every purpose this scan serves.
+count_files() {
+  find "$DIR" \
+    \( -name .git -o -name node_modules -o -name .venv -o -name venv \
+       -o -name vendor -o -name dist -o -name build -o -name target \
+       -o -name .remember -o -name .claude -o -name site-packages \
+       -o -name __pycache__ -o -name .next -o -name .cache \) -prune -o \
+    -type f "$@" -print 2>/dev/null | wc -l | tr -d ' '
+}
+CONTENT_FILES="$(count_files ! -name .DS_Store)"
+DOC_FILES="$(count_files -name '*.md')"
+SOURCE_FILES="$(count_files \( \
+  -name '*.py' -o -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \
+  -o -name '*.ts' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.go' \
+  -o -name '*.rs' -o -name '*.rb' -o -name '*.java' -o -name '*.swift' \
+  -o -name '*.sh' -o -name '*.c' -o -name '*.cpp' -o -name '*.h' \
+  -o -name '*.yml' -o -name '*.yaml' -o -name '*.toml' -o -name 'Dockerfile' \
+  -o -name '*.sql' -o -name '*.ipynb' -o -name '*.html' -o -name '*.css' \
+  -o -name '*.scss' -o -name '*.vue' -o -name '*.svelte' \))"
 
 # Tracked files that probably should not be in version control.
 # Template env files (.env.example and friends) are good practice, not a risk.
@@ -267,6 +302,11 @@ jq -n \
   --arg branch "$CUR_BRANCH" \
   --argjson dirty "$DIRTY" \
   --argjson commits "${COMMITS:-0}" \
+  --argjson lastCommitEpoch "${LAST_COMMIT_EPOCH:-0}" \
+  --arg lastCommitIso "$LAST_COMMIT_ISO" \
+  --argjson contentFiles "${CONTENT_FILES:-0}" \
+  --argjson docFiles "${DOC_FILES:-0}" \
+  --argjson sourceFiles "${SOURCE_FILES:-0}" \
   --argjson stack "$(printf '%s\n' "$STACK" | lines_to_json_unique)" \
   --arg pkgManager "$PKG_MANAGER" \
   --argjson frameworks "$(printf '%s\n' "$FRAMEWORKS" | lines_to_json_unique)" \
@@ -292,7 +332,9 @@ jq -n \
   '{
     project: {path:$path, name:$name},
     git: {isRepo:$isRepo, remote:$remote, owner:$ghOwner, repo:$ghRepo,
-          branch:$branch, dirty:$dirty, commits:$commits, hasGitignore:$hasGitignore},
+          branch:$branch, dirty:$dirty, commits:$commits, hasGitignore:$hasGitignore,
+          lastCommitEpoch:$lastCommitEpoch,
+          lastCommit:(if $lastCommitIso == "" then null else $lastCommitIso end)},
     stack: {detected:$stack, packageManager:$pkgManager, frameworks:$frameworks,
             hasBin:$hasBin, hasDataDir:$hasDataDir},
     claude: {hasClaudeMd:$hasClaudeMd, claudeMdBytes:$claudeMdBytes,
@@ -302,7 +344,9 @@ jq -n \
              hasTests:$hasTests, hasDocs:$hasDocs,
              rootFileCount:$rootFileCount, rootFiles:$rootFiles,
              strayFiles:$strayFiles, riskyTracked:$riskyTracked,
-             largeTracked:$largeTracked},
+             largeTracked:$largeTracked,
+             contentFiles:$contentFiles, docFiles:$docFiles,
+             sourceFiles:$sourceFiles},
     github: $github
   }'
 

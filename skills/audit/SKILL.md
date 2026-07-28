@@ -71,14 +71,25 @@ mostly not needed at triage time.
 Each scan object carries its own absolute `path` — key the table off that rather
 than loop order.
 
-Present results as a single ranked table:
+**Separate non-projects before ranking.** Following the classification order in
+`references/archetypes.md`, split out directories where `contentFiles == 0`
+(`empty`) or `sourceFiles == 0` (`context-workspace`). These
+are not gaps to be filled, and counting a missing CLAUDE.md against a notes
+directory inflates the report with work nobody should do. Report them as a single
+collapsed line — "N directories are notes or empty, not projects" — and exclude
+them from the ranking.
+
+Present the remaining projects as a single ranked table:
 
 | Project | Stack | CLAUDE.md | README | Scoped config | Blocking | Gaps | Last commit |
 |---|---|---|---|---|---|---|---|
 
-Rank by a stated rule: blocking findings first, then gap count, then recency of
-git activity. State the rule in the output so the ordering is legible rather than
-mysterious.
+Rank by a stated rule: blocking findings first, then gap count, then recency from
+`git.lastCommitEpoch`. State the rule in the output so the ordering is legible
+rather than mysterious.
+
+A mechanical rank cannot tell dormant from neglected. When the top of the table is
+a project untouched for a year, say so rather than recommending it first.
 
 Close with the three to five projects most worth onboarding first, and why. Do not
 offer to onboard all of them in one pass — that is far too much change to review at
