@@ -286,8 +286,14 @@ assert "$([ "${S_UNPUSHED:-1}" -eq 0 ] && echo true || echo false)" \
   "stale tracking ref still reports 0 unpushed (the trap)"
 assert "$([ "$S_ONREMOTE" = "false" ] && echo true || echo false)" \
   "force-pushed-over HEAD is detected as absent from the remote"
-assert "$(printf '%s' "$SP_JSON" | jq -e '.blockers | map(select(test("NOT ON THE REMOTE"))) | length > 0' >/dev/null 2>&1 && echo true || echo false)" \
+assert "$(printf '%s' "$SP_JSON" | jq -e '.blockers | map(select(test("NOT ON THE ORIGIN REMOTE"))) | length > 0' >/dev/null 2>&1 && echo true || echo false)" \
   "stale remote raises a blocker despite unpushed == 0"
+
+# The blocker must not overclaim: it only checked origin, so it cannot assert the
+# commits exist nowhere else. A second copy in a non-remote (often private) repo
+# is common, and asserting uniqueness led to a wrong conclusion in real use.
+assert "$(printf '%s' "$SP_JSON" | jq -e '.blockers | map(select(test("exist only in this clone"))) | length == 0' >/dev/null 2>&1 && echo true || echo false)" \
+  "blocker does not claim uniqueness it did not verify"
 
 # --------------------------------------------------------------------------
 echo

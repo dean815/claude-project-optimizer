@@ -244,7 +244,10 @@ jq -n \
       (if $isRepo and ($noUpstream|not) and $unpushed > 0 then "\($unpushed) unpushed commits" else empty end),
       (if $stashes > 0 then "\($stashes) stash(es)" else empty end),
       (if $remoteChecked and ($headOnRemote|not)
-         then "LOCAL HEAD IS NOT ON THE REMOTE — the unpushed count above compares against a cached tracking ref and cannot be trusted. Run `git fetch` and re-check before removing anything."
+         then "LOCAL HEAD IS NOT ON THE ORIGIN REMOTE — verified live just now, not inferred from the cached tracking ref. This says nothing about repositories that are not configured as remotes: a second copy may exist elsewhere, including in a PRIVATE repo that does not appear in public listings. Search for one (`gh repo list <owner> --limit 200` covers private repos) before concluding these commits are unique, and do not remove anything until a copy is confirmed."
+         else empty end),
+      (if $isRepo and $remote != "" and ($remoteChecked|not)
+         then "could not reach the remote — the unpushed count compares against a cached tracking ref that another clone may have force-pushed past, so it cannot be trusted. Run `git fetch` and re-run before removing anything."
          else empty end),
       (if $isRepo and $remote != "" and ($everFetched|not)
          then "this clone has never fetched — its remote-tracking data may be stale"

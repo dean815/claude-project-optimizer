@@ -76,10 +76,26 @@ archive at all once they see what is unsaved.
 behalf makes decisions that are theirs. Present them, get direction, then act.
 
 **`headOnRemote: false` outranks everything else in this list.** It means the
-local commits are not on the remote *right now*, whatever `unpushed` says —
+local commits are not on `origin` *right now*, whatever `unpushed` says —
 `unpushed` compares against a cached tracking ref that another clone may have
-force-pushed past. Treat the project as unbacked until `git fetch` proves
-otherwise, and do not remove anything.
+force-pushed past. Do not remove anything until a copy is confirmed.
+
+### Before concluding a history is unique
+
+`headOnRemote` only ever checks `origin`. A second copy commonly lives in a
+repository that is not configured as a remote — a `-dev`, `-private`, or backup
+repo pushed to once and forgotten. **A private repo does not appear in public
+listings**, so `gh api users/<owner>/repos` will miss it entirely:
+
+```bash
+gh repo list <owner> --limit 200 --json name,visibility,pushedAt   # includes private
+git ls-remote git@github.com:<owner>/<candidate>.git | grep <head-sha>
+```
+
+Prove a candidate actually holds the history by SHA, not by name or timestamp.
+Then state the finding precisely: "not on origin; a complete copy is at X" is a
+different situation from "this history exists nowhere else," and the two lead to
+opposite decisions. Never assert the second without having searched for the first.
 
 ### Before proposing `gh repo archive`
 
