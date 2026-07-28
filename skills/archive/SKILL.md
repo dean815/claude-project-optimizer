@@ -1,7 +1,7 @@
 ---
 name: archive
-description: This skill should be used when the user asks to "archive this project", "retire this project", "I'm done with this project", "clean up this directory", "shut down this repo", "wind down this project", or asks how to safely stop working on a project. Inventories every store holding state for it — working directory, conversation history, worktrees, GitHub, Linear, and the optimizer registry — reports what would be lost, and archives it in a safe order. The counterpart to the onboard skill.
-argument-hint: "[path] [--tier delete|cold|full|dormant] [--dry-run]"
+description: This skill should be used when the user asks to "archive this project", "retire this project", "I'm done with this project", "clean up this directory", "shut down this repo", "wind down this project", or asks how to safely stop working on a project. Inventories every store holding state for it — working directory, conversation history, worktrees, GitHub, Linear, and the optimizer registry — reports what would be lost, and archives it in a safe order. Always produces a plan first and asks before changing anything. The counterpart to the onboard skill.
+argument-hint: "[path] [--tier delete|cold|full|dormant] [--plan-only]"
 allowed-tools: Read, Write, Bash, Glob, Grep, AskUserQuestion, Skill
 ---
 
@@ -15,10 +15,18 @@ originals comes last.
 
 ## Invocation
 
+**A dry run is the default and is not optional.** Every invocation inventories,
+plans, and presents — then asks. There is no flag that skips straight to acting,
+because the plan is where the mistakes get caught: dry-running this skill against
+real projects surfaced four cases where a project was about to be reported safe
+on evidence that did not support it.
+
 Default the path to the current working directory, and resolve it to an absolute
 path — the registries are keyed by absolute path.
 
-`--dry-run` produces the full plan and stops. `--tier` skips the tier question.
+- `--plan-only` — present the plan and stop without prompting. For batch review,
+  or when the user is comparing several projects before deciding
+- `--tier <name>` — skip the tier question, still plan and prompt
 
 ## Workflow
 
@@ -129,10 +137,33 @@ Group by store, marked with what each action costs:
 Include the conversation history size. Users routinely do not know it exists, and
 it is often the largest single artifact — state the figure rather than a vague
 reference to transcripts.
+### 5. Prompt
 
-Then ask for approval in plain text. Accept partial approval.
+Having presented the plan in full, ask what to do with it. Stop here when invoked
+with `--plan-only`.
 
-### 5. Apply in order
+Use `AskUserQuestion` with dispositions rather than a free-text yes/no — the
+choice is genuinely coarse, and naming the middle option makes the safe path easy
+to take:
+
+| Option | Meaning |
+|---|---|
+| Apply the whole plan | Everything presented, in the order given |
+| Local steps only | Copy history, move the directory, deregister. Skips GitHub and Linear |
+| Resolve blockers first | Push, commit, or preserve what is unsaved; re-run afterwards |
+| Nothing for now | Change nothing. The plan stands as a record |
+
+Offer "Local steps only" whenever the plan contains any **Remote** item, since
+GitHub and Linear changes are the ones visible to other people and the ones
+worth deferring. Offer "Resolve blockers first" whenever `blockers` is non-empty,
+and make it the recommended option in that case.
+
+Accept a free-text answer selecting individual items — apply exactly what was
+named and say plainly what was skipped. When the answer is ambiguous, ask once
+more rather than guessing; an ambiguous archive instruction is not one to
+interpret generously.
+
+### 6. Apply in order
 
 Ordering is a safety property, not a preference. See the reference for why:
 
@@ -147,7 +178,7 @@ Ordering is a safety property, not a preference. See the reference for why:
 Report each step as it completes. On failure, stop that store and continue with
 the others, then say clearly what did not happen.
 
-### 6. Verify before removing originals
+### 7. Verify before removing originals
 
 After moving, confirm the archive actually contains what it should:
 
@@ -158,7 +189,7 @@ After moving, confirm the archive actually contains what it should:
 Only then remove the originals. When any check fails, leave everything in place
 and report — a duplicated project is a minor annoyance, a lost one is not.
 
-### 7. Deregister
+### 8. Deregister
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/registry.sh" set "<original-path>" declined

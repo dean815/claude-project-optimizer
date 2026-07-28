@@ -1,7 +1,7 @@
 ---
 name: onboard
 description: This skill should be used when the user asks to "onboard this project", "onboard this repo", "optimize this project", "set up this project for Claude", "run project onboarding", "get this repo properly configured", or accepts the first-session onboarding offer emitted by the project-optimizer SessionStart hook. Scans the project, interviews only about what cannot be detected, then proposes a plan covering plugin/MCP scoping, CLAUDE.md, directory organization, and GitHub configuration. Use the audit skill instead when the user only wants a report and no changes.
-argument-hint: "[path] [--area plugins|claude-md|layout|github]"
+argument-hint: "[path] [--area plugins|claude-md|layout|github] [--plan-only]"
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill
 ---
 
@@ -24,8 +24,19 @@ key creates an entry that never matches, leaving the offer live in a directory
 that was fully onboarded. When the offer came from the hook, reuse the exact path
 the hook printed rather than re-deriving it.
 
-When invoked with `--area <name>`, run only that area's checks, skip the rest of
-the interview, and skip the archetype-confirmation question.
+Planning first is the default and is not optional — the governing rule above is
+the whole posture, and there is no flag that skips to acting.
+
+- `--area <name>` — run only that area's checks, skipping the rest of the
+  interview and the archetype-confirmation question
+- `--plan-only` — present the plan and stop without asking. For comparing
+  several projects before deciding
+
+Approval here is deliberately plain text rather than `AskUserQuestion`, unlike
+the `archive` skill: an onboarding plan is a list of many small independent
+items, and compressing it into four options discards the per-item detail the
+user needs. Archive's choices are coarse dispositions, so structured options fit
+there and not here.
 
 ## Workflow
 

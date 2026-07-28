@@ -48,8 +48,8 @@ Only the skills write, and only after approval.
 /project-optimizer:onboard --area github      # only the GitHub checks
 /project-optimizer:audit                      # read-only gap report
 /project-optimizer:audit --batch ~/claude     # rank every project under a root
-/project-optimizer:archive                    # retire a project safely
-/project-optimizer:archive --dry-run          # plan only, change nothing
+/project-optimizer:archive                    # inventory, plan, then ask
+/project-optimizer:archive --plan-only        # plan and stop, no prompt
 /project-optimizer:skip                       # snooze the offer here (7 days)
 /project-optimizer:skip never                 # never offer here again
 ```
@@ -83,6 +83,14 @@ never deletes.
 hygiene files (`.gitignore`, no tracked secrets), collaboration config (branch
 protection, PR and issue templates, CODEOWNERS), and automation (CI, Dependabot,
 secret scanning).
+
+**Archiving always plans first.** A dry run is the default posture, not a flag:
+every invocation inventories, plans, and presents before asking what to do. Dry
+runs against real projects caught four cases where a project was about to be
+called safe on evidence that did not support it — stale remote-tracking refs
+trusted, in-sync branches flagged as local-only, a blocker asserting uniqueness
+it had not verified, and only `origin` being checked when a backup remote held
+the history.
 
 **Archiving** — the reverse direction. A project holds state in six places:
 working directory, conversation history (`~/.claude/projects/`, which nothing
