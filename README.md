@@ -33,9 +33,11 @@ Only the skills write, and only after approval.
 | `hooks/hooks.json` | Registers the SessionStart hook |
 | `scripts/session-start.sh` | Read-only offer. Silent for known or noise directories |
 | `scripts/scan-project.sh` | Deterministic project scan, emits JSON |
+| `scripts/archive-preflight.sh` | Inventories every store holding project state; reports what archiving would destroy |
 | `scripts/registry.sh` | Reads and writes onboarding state |
 | `skills/onboard/` | Scan, interview, plan, apply |
 | `skills/audit/` | Read-only gap report; batch mode ranks many projects |
+| `skills/archive/` | Retire a project without orphaning its state |
 | `skills/skip/` | Records a directory as declined or snoozed |
 | `references/` | Archetypes, plugin matrix, CLAUDE.md template, GitHub checklist, layout checks — shared by `onboard` and `audit` |
 
@@ -46,6 +48,8 @@ Only the skills write, and only after approval.
 /project-optimizer:onboard --area github      # only the GitHub checks
 /project-optimizer:audit                      # read-only gap report
 /project-optimizer:audit --batch ~/claude     # rank every project under a root
+/project-optimizer:archive                    # retire a project safely
+/project-optimizer:archive --dry-run          # plan only, change nothing
 /project-optimizer:skip                       # snooze the offer here (7 days)
 /project-optimizer:skip never                 # never offer here again
 ```
@@ -79,6 +83,18 @@ never deletes.
 hygiene files (`.gitignore`, no tracked secrets), collaboration config (branch
 protection, PR and issue templates, CODEOWNERS), and automation (CI, Dependabot,
 secret scanning).
+
+**Archiving** — the reverse direction. A project holds state in six places:
+working directory, conversation history (`~/.claude/projects/`, which nothing
+else copies), git worktrees, the GitHub repo, Linear, and this plugin's registry.
+Deleting the directory orphans the other five. `archive` inventories all of them,
+reports what would be lost — unpushed commits, stashes, local-only branches,
+worktrees with unsaved work, untracked credential files — and works in an order
+where nothing is removed before its content is confirmed safe elsewhere.
+
+Conversation history is located by the `cwd` recorded inside each transcript. The
+encoded directory name cannot be reversed: hyphens in a project name are
+indistinguishable from path separators.
 
 ## Trigger behavior
 
@@ -115,6 +131,9 @@ Statuses: `optimized` (done), `declined` (never ask again), `snoozed` (ask again
 after `snoozeUntil`). Writes are atomic, and an unparseable registry is backed up
 and rebuilt rather than causing failures.
 
+Set `PROJECT_OPTIMIZER_HOME` to relocate all state. The test suite uses this to
+sandbox itself; without it, tests write fixtures into the real registry.
+
 ## Safety guarantees
 
 - The SessionStart hook never writes anything
@@ -125,6 +144,9 @@ and rebuilt rather than causing failures.
 - Tracked secrets are reported, never auto-remediated: they need rotation first,
   and removing them from history is the user's decision
 - Credentials are never written into any file, including `.mcp.json` and examples
+- Archiving never deletes a GitHub repo (`gh repo archive` only), never deletes a
+  Linear project, never `rm -rf`s a worktree, and never removes an original
+  before verifying the copy
 
 ## Requirements
 

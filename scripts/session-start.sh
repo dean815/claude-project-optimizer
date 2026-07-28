@@ -12,7 +12,8 @@
 
 set -uo pipefail
 
-REGISTRY="${HOME}/.claude/project-optimizer/registry.json"
+# Kept in sync with registry.sh — see the note there on PROJECT_OPTIMIZER_HOME.
+REGISTRY="${PROJECT_OPTIMIZER_HOME:-${HOME}/.claude/project-optimizer}/registry.json"
 
 # --- Resolve the project directory ----------------------------------------
 # SessionStart hooks receive JSON on stdin containing "cwd".

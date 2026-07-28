@@ -14,7 +14,9 @@
 
 set -uo pipefail
 
-REGISTRY_DIR="${HOME}/.claude/project-optimizer"
+# PROJECT_OPTIMIZER_HOME redirects all state. Tests set it to a temp directory —
+# without it the suite writes fixture entries into the user's real registry.
+REGISTRY_DIR="${PROJECT_OPTIMIZER_HOME:-${HOME}/.claude/project-optimizer}"
 REGISTRY="${REGISTRY_DIR}/registry.json"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }

@@ -18,6 +18,12 @@ HOOK_TMP="$ROOT/.test-tmp"
 rm -rf "$HOOK_TMP"
 trap 'rm -rf "$TMP" "$HOOK_TMP"' EXIT
 
+# Redirect all plugin state into the sandbox. Without this the suite writes
+# fixture entries into the user's real ~/.claude/project-optimizer/registry.json,
+# which it did until this was added.
+export PROJECT_OPTIMIZER_HOME="$TMP/state"
+mkdir -p "$PROJECT_OPTIMIZER_HOME"
+
 PASS=0; FAIL=0
 ok()  { printf '  ok    %s\n' "$1"; PASS=$((PASS + 1)); }
 bad() { printf '  FAIL  %s\n' "$1"; FAIL=$((FAIL + 1)); }
@@ -197,6 +203,65 @@ OUT="$(echo "{\"cwd\":\"$HOOK_REPO\",\"source\":\"startup\"}" | bash "$ROOT/scri
 assert "$([ -z "$OUT" ] && echo true || echo false)" \
   "a recorded directory silences the hook"
 bash "$ROOT/scripts/registry.sh" remove "$HOOK_REPO" >/dev/null 2>&1
+
+# Regression: this suite once wrote its fixtures into the user's real registry.
+assert "$([ -f "$PROJECT_OPTIMIZER_HOME/registry.json" ] && echo true || echo false)" \
+  "PROJECT_OPTIMIZER_HOME redirects registry writes"
+REAL_REG="$HOME/.claude/project-optimizer/registry.json"
+if [ -f "$REAL_REG" ] && grep -q "$TMP" "$REAL_REG" 2>/dev/null; then
+  bad "tests do not touch the real registry"
+else
+  ok "tests do not touch the real registry"
+fi
+
+# --------------------------------------------------------------------------
+echo
+echo "[archive-preflight]"
+AR="$TMP/arch"; make_fixture "$AR"
+PF() { bash "$ROOT/scripts/archive-preflight.sh" "$AR" --no-github 2>/dev/null; }
+
+# No remote at all: every commit exists only here.
+UP="$(PF | jq -r '.git.unpushed')"
+NU="$(PF | jq -r '.git.noUpstream')"
+assert "$([ "${UP:-0}" -gt 0 ] && [ "$NU" = "true" ] && echo true || echo false)" \
+  "no-remote repo reports its commits as unpushed"
+
+# Untracked credentials vanish with the directory — git preserves nothing.
+printf 'SECRET=1\n' > "$AR/.env"
+printf 'SECRET=\n' > "$AR/.env.example"
+UTS="$(PF | jq -r '.untrackedSensitive | join(",")')"
+assert "$(printf '%s' "$UTS" | grep -q '^\.env$' && echo true || echo false)" \
+  "untracked .env is flagged (got: ${UTS:-none})"
+assert "$(printf '%s' "$UTS" | grep -q 'example' && echo false || echo true)" \
+  ".env.example is not flagged as sensitive"
+
+# Stashes are invisible once a directory moves.
+( cd "$AR" && printf 'change\n' >> big.bin && git stash -q 2>/dev/null ) || true
+assert "$([ "$(PF | jq -r '.git.stashes')" -gt 0 ] && echo true || echo false)" \
+  "stashes are detected"
+
+# Pushing to a real (local, bare) remote must clear the unpushed count.
+BARE="$TMP/bare.git"; git init -q --bare "$BARE" 2>/dev/null
+( cd "$AR" && git remote add origin "$BARE" >/dev/null 2>&1 \
+  && git push -q -u origin HEAD >/dev/null 2>&1 ) || true
+assert "$([ "$(PF | jq -r '.git.unpushed')" -eq 0 ] && echo true || echo false)" \
+  "unpushed drops to zero after pushing"
+
+# Regression: counting all of HEAD reported the entire history for a detached
+# checkout that was in fact fully pushed.
+( cd "$AR" && git checkout -q --detach HEAD >/dev/null 2>&1 ) || true
+assert "$([ "$(PF | jq -r '.git.unpushed')" -eq 0 ] && echo true || echo false)" \
+  "detached HEAD already on the remote is not counted as unpushed"
+
+# Blockers must surface for a project with real problems.
+assert "$([ "$(bash "$ROOT/scripts/archive-preflight.sh" "$REPO" --no-github 2>/dev/null \
+  | jq -r '.blockers | length')" -gt 0 ] && echo true || echo false)" \
+  "blockers are reported for an unpushed repo"
+
+bash "$ROOT/scripts/archive-preflight.sh" '/nonexistent/pa"th' --no-github 2>/dev/null \
+  | jq empty >/dev/null 2>&1 \
+  && ok "preflight emits valid JSON for a bad path" \
+  || bad "preflight emits valid JSON for a bad path"
 
 # --------------------------------------------------------------------------
 echo
