@@ -10,3 +10,6 @@ node_modules/
 
 # Other plugins' local state, not part of this plugin
 .remember/
+
+# Test fixtures
+.test-tmp/
