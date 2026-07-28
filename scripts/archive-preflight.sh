@@ -38,6 +38,23 @@ command -v jq >/dev/null 2>&1 || emit_error "jq is required but not installed" "
 
 lines_to_json() { jq -R -s 'split("\n") | map(select(length > 0))'; }
 
+# Bounded execution for network calls; macOS ships no timeout(1).
+run_bounded() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@" 2>/dev/null; return $?; fi
+  if command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@" 2>/dev/null; return $?; fi
+  local out rc pid watchdog
+  out="$(mktemp)" || return 1
+  "$@" >"$out" 2>/dev/null &
+  pid=$!
+  ( sleep "$secs"; kill -TERM "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  watchdog=$!
+  wait "$pid" 2>/dev/null; rc=$?
+  kill -TERM "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
+  cat "$out"; rm -f "$out"
+  return $rc
+}
+
 # --- Git: what would be lost -----------------------------------------------
 IS_REPO=false; REMOTE=""; UNCOMMITTED=0; UNPUSHED=0; NO_UPSTREAM=false
 STASHES=0; UNMERGED=""; WORKTREES_JSON='[]'
@@ -59,12 +76,17 @@ if git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
   fi
 
   # Local branches with no upstream, or ahead of it — work that exists only here.
-  while IFS='|' read -r name track; do
+  #
+  # Test %(upstream) for existence, NOT %(upstream:track): git leaves the track
+  # field empty for a branch that is in sync, so keying on it flags every clean
+  # branch as local-only.
+  while IFS='|' read -r name upstream track; do
     [ -z "$name" ] && continue
-    if [ -z "$track" ] || printf '%s' "$track" | grep -q 'ahead'; then
+    if [ -z "$upstream" ] || printf '%s' "$track" | grep -q 'ahead'; then
       UNMERGED="${UNMERGED}${name}"$'\n'
     fi
-  done < <(git -C "$DIR" for-each-ref --format='%(refname:short)|%(upstream:track)' refs/heads 2>/dev/null)
+  done < <(git -C "$DIR" for-each-ref \
+             --format='%(refname:short)|%(upstream)|%(upstream:track)' refs/heads 2>/dev/null)
 
   # Worktrees hold uncommitted work far more often than the main checkout.
   WT_ROWS=""
@@ -91,6 +113,26 @@ if git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
   if printf '%s' "$REMOTE" | grep -qi 'github\.com'; then
     SLUG="$(printf '%s' "$REMOTE" | sed -E 's#^git@github\.com:##; s#^https?://github\.com/##; s#\.git$##')"
     GH_OWNER="${SLUG%%/*}"; GH_REPO="${SLUG##*/}"
+  fi
+fi
+
+# --- Is the remote-tracking ref actually trustworthy? -----------------------
+# `@{u}..HEAD` counts against the LOCAL cache of the remote, which can be
+# arbitrarily stale. If another clone force-pushed over these commits, the count
+# still reads 0 while the remote no longer has them. Verify against the live
+# remote before believing "everything is pushed" — this is the check that stands
+# between an archive and silently deleting the only copy of a history.
+EVER_FETCHED=false; REMOTE_CHECKED=false; HEAD_ON_REMOTE=false
+if [ "$IS_REPO" = true ]; then
+  { [ -f "$DIR/.git/FETCH_HEAD" ] || [ -f "$(git -C "$DIR" rev-parse --git-common-dir 2>/dev/null)/FETCH_HEAD" ]; } \
+    && EVER_FETCHED=true
+  if [ -n "$REMOTE" ] && [ "$SKIP_GITHUB" -eq 0 ]; then
+    LS="$(run_bounded 20 git -C "$DIR" ls-remote --heads origin || true)"
+    if [ -n "$LS" ]; then
+      REMOTE_CHECKED=true
+      HEAD_SHA="$(git -C "$DIR" rev-parse HEAD 2>/dev/null || true)"
+      [ -n "$HEAD_SHA" ] && printf '%s' "$LS" | grep -q "$HEAD_SHA" && HEAD_ON_REMOTE=true
+    fi
   fi
 fi
 
@@ -174,6 +216,9 @@ jq -n \
   --argjson unpushed "${UNPUSHED:-0}" \
   --argjson noUpstream "$NO_UPSTREAM" \
   --argjson stashes "${STASHES:-0}" \
+  --argjson everFetched "$EVER_FETCHED" \
+  --argjson remoteChecked "$REMOTE_CHECKED" \
+  --argjson headOnRemote "$HEAD_ON_REMOTE" \
   --argjson unmergedBranches "$(printf '%s\n' "$UNMERGED" | lines_to_json)" \
   --argjson worktrees "$WORKTREES_JSON" \
   --argjson untrackedSensitive "$(printf '%s\n' "$UNTRACKED_SENSITIVE" | lines_to_json)" \
@@ -186,6 +231,8 @@ jq -n \
     project: {path:$path, name:$name},
     git: {isRepo:$isRepo, remote:$remote, uncommitted:$uncommitted,
           unpushed:$unpushed, noUpstream:$noUpstream, stashes:$stashes,
+          everFetched:$everFetched, remoteChecked:$remoteChecked,
+          headOnRemote:$headOnRemote,
           unmergedBranches:$unmergedBranches, worktrees:$worktrees},
     untrackedSensitive: $untrackedSensitive,
     history: {dirs:$history, totalKB:$historyTotalKB, count:($history|length)},
@@ -196,6 +243,12 @@ jq -n \
       (if $isRepo and $noUpstream and $unpushed > 0 then "no remote — \($unpushed) commits exist only here" else empty end),
       (if $isRepo and ($noUpstream|not) and $unpushed > 0 then "\($unpushed) unpushed commits" else empty end),
       (if $stashes > 0 then "\($stashes) stash(es)" else empty end),
+      (if $remoteChecked and ($headOnRemote|not)
+         then "LOCAL HEAD IS NOT ON THE REMOTE — the unpushed count above compares against a cached tracking ref and cannot be trusted. Run `git fetch` and re-check before removing anything."
+         else empty end),
+      (if $isRepo and $remote != "" and ($everFetched|not)
+         then "this clone has never fetched — its remote-tracking data may be stale"
+         else empty end),
       (if ($unmergedBranches|length) > 0 then "\($unmergedBranches|length) branch(es) not on the remote" else empty end),
       (if ([$worktrees[] | select(.uncommitted > 0 or .unpushed > 0)] | length) > 0
          then "\([$worktrees[] | select(.uncommitted > 0 or .unpushed > 0)] | length) worktree(s) with unsaved work" else empty end),

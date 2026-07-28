@@ -75,6 +75,29 @@ archive at all once they see what is unsaved.
 **Do not resolve blockers automatically.** Committing or pushing on the user's
 behalf makes decisions that are theirs. Present them, get direction, then act.
 
+**`headOnRemote: false` outranks everything else in this list.** It means the
+local commits are not on the remote *right now*, whatever `unpushed` says —
+`unpushed` compares against a cached tracking ref that another clone may have
+force-pushed past. Treat the project as unbacked until `git fetch` proves
+otherwise, and do not remove anything.
+
+### Before proposing `gh repo archive`
+
+Confirm no other local directory shares the remote. Two checkouts of one repo is
+common — a squashed publishing copy alongside a full-history working copy — and
+archiving the repo from one silently affects the other:
+
+```bash
+git -C "<path>" remote get-url origin
+for d in "$(dirname "<path>")"/*/; do
+  printf '%s %s\n' "$d" "$(git -C "$d" remote get-url origin 2>/dev/null)"
+done | grep -i "<repo-name>"
+```
+
+Normalize before comparing — the same repo appears as both
+`git@github.com:owner/repo.git` and `https://github.com/owner/repo.git`. When
+another directory shares it, drop the GitHub step from the plan and say why.
+
 For `delete` and `cold` tiers most blockers do not apply; skip the ones that are
 vacuous rather than listing them as satisfied.
 

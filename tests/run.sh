@@ -263,6 +263,32 @@ bash "$ROOT/scripts/archive-preflight.sh" '/nonexistent/pa"th' --no-github 2>/de
   && ok "preflight emits valid JSON for a bad path" \
   || bad "preflight emits valid JSON for a bad path"
 
+# A remote-tracking ref is a local cache and can be arbitrarily stale. When
+# another clone force-pushes over these commits, @{u}..HEAD still reports 0
+# while the remote no longer has them — reporting that as "safe to archive"
+# would delete the only copy. Reproduced here entirely locally.
+SR="$TMP/stale"; make_fixture "$SR"
+BARE2="$TMP/bare2.git"; git init -q --bare "$BARE2" 2>/dev/null
+BR="$(git -C "$SR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+( cd "$SR" && git remote add origin "$BARE2" >/dev/null 2>&1 \
+  && git push -q -u origin HEAD >/dev/null 2>&1 ) || true
+OTHER="$TMP/other"; mkdir -p "$OTHER"
+( cd "$OTHER" && git init -q . && git config user.email t@example.com \
+  && git config user.name test && printf 'unrelated\n' > f.txt \
+  && git add -A >/dev/null 2>&1 && git commit -qm unrelated >/dev/null 2>&1 \
+  && git remote add origin "$BARE2" >/dev/null 2>&1 \
+  && git push -qf origin "HEAD:refs/heads/$BR" >/dev/null 2>&1 ) || true
+
+SP_JSON="$(bash "$ROOT/scripts/archive-preflight.sh" "$SR" 2>/dev/null)"
+S_UNPUSHED="$(printf '%s' "$SP_JSON" | jq -r '.git.unpushed')"
+S_ONREMOTE="$(printf '%s' "$SP_JSON" | jq -r '.git.headOnRemote')"
+assert "$([ "${S_UNPUSHED:-1}" -eq 0 ] && echo true || echo false)" \
+  "stale tracking ref still reports 0 unpushed (the trap)"
+assert "$([ "$S_ONREMOTE" = "false" ] && echo true || echo false)" \
+  "force-pushed-over HEAD is detected as absent from the remote"
+assert "$(printf '%s' "$SP_JSON" | jq -e '.blockers | map(select(test("NOT ON THE REMOTE"))) | length > 0' >/dev/null 2>&1 && echo true || echo false)" \
+  "stale remote raises a blocker despite unpushed == 0"
+
 # --------------------------------------------------------------------------
 echo
 echo "[manifest]"
