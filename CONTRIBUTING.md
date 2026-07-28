@@ -4,6 +4,8 @@ Thanks for looking at this. The plugin decides what to change in people's
 projects, so the bar for "how do we know this is right" is higher than the code
 size suggests.
 
+Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Running it locally
 
 ```bash
