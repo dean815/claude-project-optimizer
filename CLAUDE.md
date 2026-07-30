@@ -42,7 +42,15 @@ breaks both — update the `${CLAUDE_PLUGIN_ROOT}/references/…` pointers in ea
   breaking probes on long paths. Prefer a `while read` loop.
 - Plugin `hooks.json` uses the wrapped form (`{"description", "hooks": {…}}`),
   not the flat settings form. The plugin-dev schema validator only understands
-  the flat form and will report a false failure.
+  the flat form and will report a false failure. Verified correct at runtime:
+  Claude Code logs `Read hooks.json for plugin project-optimizer (enabled=true)`.
+- **`${CLAUDE_PLUGIN_ROOT}` is NOT set in the Bash tool's environment.** It is
+  expanded upstream — in `hooks.json` command strings, and by the Skill tool when
+  it injects a `SKILL.md`. So the variable form is correct *inside* skills and
+  hooks, and broken anywhere it reaches a shell unexpanded. A command failing
+  with `/scripts/…: No such file or directory` (note the leading slash) means the
+  variable was empty, which in practice means the text came from reading a file
+  rather than from skill injection. Use repo-relative paths in prose and docs.
 
 ## Do not
 
