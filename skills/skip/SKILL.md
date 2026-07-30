@@ -70,6 +70,12 @@ match, and a symlink-resolved variant creates an entry that silences nothing.
 
 ## Confirming
 
+**Run `registry.sh set` before saying anything about the outcome.** The failure
+this guards against is answering "snoozed for 7 days" conversationally without
+ever writing the entry: the user believes the offer is deferred, nothing is
+recorded, and it returns on the very next session. A verbal acknowledgement is
+not a skip. Measured at 2 of 4 deferrals before this was made explicit.
+
 Reply in one line: what was recorded, for which directory, and when it expires if
 snoozed. Do not explain the registry, restate the plugin's purpose, or offer
 alternatives — the user just declined something and wants to get on with their
