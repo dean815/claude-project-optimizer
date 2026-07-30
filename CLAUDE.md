@@ -35,7 +35,17 @@ breaks both — update the `${CLAUDE_PLUGIN_ROOT}/references/…` pointers in ea
 - **Hook and plugin changes require a full Claude Code restart.** Editing
   `hooks/hooks.json` or the hook script has no effect on the running session.
 - SessionStart also fires on `compact` and `clear`. The hook filters on
-  `.source`; without that filter the offer re-injects mid-task.
+  `.source`; without that filter the offer re-injects mid-task. Verified: the
+  payload really does carry `source` (alongside `cwd`, `session_id`,
+  `transcript_path`, `hook_event_name`), and `claude -p "/clear"` produces two
+  SessionStart events — `startup` then `clear` — from which the hook emits
+  exactly once. `resume` is deliberately allowed through; only `compact|clear`
+  are suppressed.
+- Reaching each source for testing: `startup` is any normal run, `resume` is
+  `claude -c`, `clear` is `claude -p "/clear"`. **`compact` has no headless
+  trigger** — `/compact` as a prompt yields only `startup`, and auto-compaction
+  needs a full context window. It shares the `compact|clear` branch that `clear`
+  exercises, so it is covered by construction rather than observed.
 - macOS ships neither `timeout` nor `gtimeout` — `run_bounded` falls back to a
   watchdog. Do not assume `timeout` exists.
 - BSD `xargs -I` truncates its constructed argument at 255 bytes, silently
