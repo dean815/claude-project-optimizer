@@ -212,12 +212,13 @@ fi
 GH_JSON='{"checked":false,"reason":"skipped"}'
 if [ "$SKIP_GITHUB" -eq 0 ] && [ -n "$GH_OWNER" ] && command -v gh >/dev/null 2>&1; then
   V="$(gh repo view "${GH_OWNER}/${GH_REPO}" \
-        --json name,visibility,isArchived,stargazerCount,forkCount,issues,pullRequests 2>/dev/null || true)"
+        --json name,visibility,isArchived,stargazerCount,forkCount,issues,pullRequests,owner 2>/dev/null || true)"
   if [ -n "$V" ] && printf '%s' "$V" | jq empty >/dev/null 2>&1; then
     GH_JSON="$(printf '%s' "$V" | jq -c '{checked:true, reachable:true, exists:true,
       name:.name, visibility:.visibility, archived:.isArchived,
       stars:.stargazerCount, forks:.forkCount,
-      openIssues:((.issues|length) // 0), openPRs:((.pullRequests|length) // 0)}')"
+      openIssues:(.issues.totalCount // 0), openPRs:(.pullRequests.totalCount // 0),
+      owner:(.owner.login // null), viewerIsOwner:null}')"
   else
     GH_JSON='{"checked":true,"reachable":false,"reason":"gh call failed — repo state unknown"}'
   fi
