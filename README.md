@@ -1,5 +1,8 @@
 # project-optimizer
 
+[![CI](https://github.com/dean815/claude-project-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/dean815/claude-project-optimizer/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Brings new project directories to a well-configured baseline. The first time
 Claude Code runs in a directory, the plugin offers to onboard it — tuning which
 plugins and MCP servers load, writing or improving `CLAUDE.md`, checking directory
