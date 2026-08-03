@@ -34,6 +34,12 @@ breaks both — update the `${CLAUDE_PLUGIN_ROOT}/references/…` pointers in ea
 
 - **Hook and plugin changes require a full Claude Code restart.** Editing
   `hooks/hooks.json` or the hook script has no effect on the running session.
+- **`claude plugin update` compares the version string, not the commit.** With
+  `version` unchanged it reports "already at the latest version" and installed
+  copies stay pinned at the sha they were installed from, however many commits
+  the source has moved. Bump `version` in BOTH `.claude-plugin/plugin.json` and
+  `.claude-plugin/marketplace.json` (they must match) or a fix never reaches
+  anyone who installed from the marketplace — including you.
 - SessionStart also fires on `compact` and `clear`. The hook filters on
   `.source`; without that filter the offer re-injects mid-task. Verified: the
   payload really does carry `source` (alongside `cwd`, `session_id`,
