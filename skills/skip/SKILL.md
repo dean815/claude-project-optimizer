@@ -68,6 +68,23 @@ offer came from the SessionStart hook, reuse the exact path the hook printed in
 its message rather than re-deriving it — the registry is keyed by exact string
 match, and a symlink-resolved variant creates an entry that silences nothing.
 
+## The companion registry
+
+When `~/.claude/linear-sync/registry.json` exists, onboarding also covers issue
+tracking, so a **permanent** decline here must land there too or that side is
+asked again later. After a successful `declined` write, run:
+
+```bash
+REG="$HOME/.claude/linear-sync/registry.json"; DIR="<path>"; tmp="$(mktemp)"
+[ -f "$REG" ] && jq --arg p "$DIR" --arg slug "$(basename "$DIR")" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '.projects[$p] = ((.projects[$p] // {}) + {slug:$slug, status:"declined", createdAt:$now})' \
+  "$REG" > "$tmp" && mv "$tmp" "$REG"
+```
+
+Do this for `declined` only. A snooze is temporary and needs no mirror. When the
+file does not exist, skip this silently — it is a machine-local companion, not part
+of the plugin.
+
 ## Confirming
 
 **Run `registry.sh set` before saying anything about the outcome.** The failure

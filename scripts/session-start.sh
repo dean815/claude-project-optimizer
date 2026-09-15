@@ -52,9 +52,46 @@ case "$PROJECT_DIR" in
   "$HOME/Downloads"|"$HOME/Downloads/"*) exit 0 ;;
   "$HOME/Desktop"|"$HOME/.Trash"|"$HOME/.Trash/"*) exit 0 ;;
   /tmp|/private/tmp|/tmp/*|/private/tmp/*|/private/var/folders/*|/var/folders/*) exit 0 ;;
-  *"/.claude-worktrees/"*|*"-worktrees-"*|*"/worktrees/"*) exit 0 ;;
   *"/node_modules/"*|*"/.git/"*|*"/vendor/"*|*"/.venv/"*|*"/site-packages/"*) exit 0 ;;
 esac
+
+# --- Worktrees belong to their parent repo ---------------------------------
+# A linked git worktree (git worktree add, or Claude Code's own
+# .claude/worktrees/<name>) is a scratch copy of a project, not a project. Look
+# the offer up under the main working tree, so onboarding the parent once
+# silences every worktree of it — and so a session that opens in a worktree
+# (about half of them, on a worktree-heavy setup) still gets the offer instead
+# of being skipped as noise.
+WORKTREE_OF=""
+COMMON="$(git -C "$PROJECT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ -z "$COMMON" ]; then
+  # git < 2.31 has no --path-format; the plain form may come back relative.
+  COMMON="$(git -C "$PROJECT_DIR" rev-parse --git-common-dir 2>/dev/null || true)"
+  case "$COMMON" in
+    ""|/*) ;;
+    *) COMMON="$PROJECT_DIR/$COMMON" ;;
+  esac
+fi
+GIT_DIR_HERE="$(git -C "$PROJECT_DIR" rev-parse --path-format=absolute --git-dir 2>/dev/null \
+  || git -C "$PROJECT_DIR" rev-parse --git-dir 2>/dev/null || true)"
+case "$GIT_DIR_HERE" in ""|/*) ;; *) GIT_DIR_HERE="$PROJECT_DIR/$GIT_DIR_HERE" ;; esac
+if [ -n "$COMMON" ] && [ -n "$GIT_DIR_HERE" ] && [ "$COMMON" != "$GIT_DIR_HERE" ]; then
+  # Linked worktree: the common dir is the parent's .git; its parent is the repo.
+  MAIN="$(cd "$(dirname "$COMMON")" 2>/dev/null && pwd)"
+  if [ -n "$MAIN" ] && [ "$MAIN" != "$PROJECT_DIR" ]; then
+    WORKTREE_OF="$PROJECT_DIR"; PROJECT_DIR="$MAIN"
+  fi
+fi
+# Not a git worktree but shaped like one (a worktree whose repo was deleted,
+# or a copy): fall back to the path convention.
+if [ -z "$WORKTREE_OF" ]; then
+  case "$PROJECT_DIR" in
+    *"/.claude/worktrees/"*)
+      MAIN="${PROJECT_DIR%%/.claude/worktrees/*}"
+      [ -d "$MAIN" ] && { WORKTREE_OF="$PROJECT_DIR"; PROJECT_DIR="$MAIN"; }
+      ;;
+  esac
+fi
 
 # --- Already known? Stay silent -------------------------------------------
 NOW_EPOCH="$(date +%s 2>/dev/null || echo 0)"
@@ -96,7 +133,10 @@ fi
   || FACTS="$FACTS; no project-scoped settings"
 [ -f "$PROJECT_DIR/README.md" ] || FACTS="$FACTS; no README"
 
-MSG="Project optimizer: this is the first Claude Code session in \"${NAME}\" (${PROJECT_DIR}). Quick scan: ${FACTS}. ASK the user — in one short question, do not start yet — whether they want to run project onboarding now. Onboarding tunes which plugins and MCP servers load for this project, writes or improves CLAUDE.md, checks directory organization, and verifies GitHub configuration; it always presents a plan before changing anything. If yes, invoke the Skill tool with skill 'project-optimizer:onboard' and pass this exact path: ${PROJECT_DIR}. If they decline OR defer it in any way — 'no', 'never', 'not now', 'later', 'remind me next week' — you must invoke the Skill tool with 'project-optimizer:skip' and that same path. Saying you have snoozed or declined it without invoking that skill records nothing, and the offer returns on the very next session while the user believes it will not. If their first message is a greeting, or carries no task, ask then — that is the moment this is least disruptive. If they are already mid-task, stay silent and get on with their actual request; never block or delay their work for this. Skipping records nothing, so the offer returns next session."
+WT_NOTE=""
+[ -n "$WORKTREE_OF" ] && WT_NOTE=" NOTE: this session runs in a worktree (${WORKTREE_OF}) of that project. The path above is the parent repository — pass THAT path to the skills, never the worktree path, so the record covers the project and all its worktrees."
+
+MSG="Project optimizer: this is the first Claude Code session in \"${NAME}\" (${PROJECT_DIR}). Quick scan: ${FACTS}. ASK the user — in one short question, do not start yet — whether they want to run project onboarding now. Onboarding tunes which plugins and MCP servers load for this project, writes or improves CLAUDE.md, checks directory organization, and verifies GitHub configuration; it always presents a plan before changing anything. If yes, invoke the Skill tool with skill 'project-optimizer:onboard' and pass this exact path: ${PROJECT_DIR}. If they decline OR defer it in any way — 'no', 'never', 'not now', 'later', 'remind me next week' — you must invoke the Skill tool with 'project-optimizer:skip' and that same path. Saying you have snoozed or declined it without invoking that skill records nothing, and the offer returns on the very next session while the user believes it will not. TIMING: if their first message is a greeting or carries no task, ask right away. If it carries a task — the usual case — handle that request first, in full, and then raise this offer in one line at the end of that same reply. Do not skip it because the session opened with work: nothing is recorded when you stay silent, so the offer returns every session and the user never sees it. Never block or delay their actual request for this.${WT_NOTE}"
 
 # --- Emit SessionStart additionalContext ----------------------------------
 if command -v jq >/dev/null 2>&1; then

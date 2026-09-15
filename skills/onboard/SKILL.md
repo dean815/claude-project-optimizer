@@ -7,9 +7,9 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Skill
 
 # Project Onboarding
 
-Bring a project directory to a well-configured baseline across five areas: which
+Bring a project directory to a well-configured baseline across six areas: which
 plugins and MCP servers load, CLAUDE.md quality, directory organization, GitHub
-configuration, and the project's session-naming short code.
+configuration, the project's session-naming short code, and issue tracking.
 
 **The governing rule: propose a complete plan, change nothing until the user
 approves it.** No file is written, no `gh` mutation is issued, and no registry
@@ -22,7 +22,10 @@ is given, and use an **absolute** path everywhere. The registry is keyed by
 absolute path and the SessionStart hook looks up an absolute `cwd`; a relative
 key creates an entry that never matches, leaving the offer live in a directory
 that was fully onboarded. When the offer came from the hook, reuse the exact path
-the hook printed rather than re-deriving it.
+the hook printed rather than re-deriving it. When the hook says the session is
+in a **worktree**, the path it printed is the parent repository — use that. Never
+onboard a worktree directory itself; it is a scratch copy, and a record keyed to it
+silences nothing for the project.
 
 Planning first is the default and is not optional — the governing rule above is
 the whole posture, and there is no flag that skips to acting.
@@ -114,7 +117,7 @@ a CLAUDE.md exists, or whether there is a git remote. The scan knows all of thes
 
 ### 4. Build the plan
 
-Compose proposed changes across the five areas. Consult the references rather than
+Compose proposed changes across the six areas. Consult the references rather than
 improvising:
 
 | Area | Reference (under `${CLAUDE_PLUGIN_ROOT}/references/`) | Produces |
@@ -124,12 +127,22 @@ improvising:
 | Layout | `layout-checks.md` | Moves, additions, `.gitignore` edits |
 | GitHub | `github-checklist.md` | `gh` commands, `.github/` files |
 | Session naming | `session-naming.md` | `.claude/settings.json` (`env`), `~/.claude/session-name-shortnames.json` |
+| Issue tracking | (machine-local, see below) | a Linear issue label + `~/.claude/linear-sync/registry.json` |
 
 Session naming is the only area that writes outside the project — it registers the
 project's short code in a user-level map. Skip the area entirely when
 `~/.claude/session-name-shortnames.json` does not exist; that means the naming system
 is not installed on this machine, and inventing the file would strand a code nothing
 reads.
+
+Issue tracking follows the same rule. Skip the area entirely when
+`~/.claude/linear-sync/registry.json` does not exist — that means the Linear
+companion is not installed here. When it exists, read it: if
+`.projects["<absolute-path>"].status` is already `tracked`, there is nothing to
+propose. Otherwise propose one item — **Track in Linear: create the workspace
+issue label `<slug>` and add the project to the sync allowlist** — and note that
+it deliberately creates no Linear project or team. This area used to be a separate
+first-session prompt; it lives here now so a project is offered once, not twice.
 
 **Delegate rather than duplicate.** When the project already has a CLAUDE.md and
 the `claude-md-management` plugin is installed, invoke the Skill tool with
@@ -171,6 +184,8 @@ project in a coherent state:
 3. Layout moves
 4. GitHub remote changes
 5. User-level registration (`~/.claude/session-name-shortnames.json`)
+6. Issue tracking — invoke the Skill tool with skill `linear-track` and pass the
+   project's absolute path as the argument
 
 Register the short code last, after the project's own `.claude/settings.json` carries
 the matching `env` prefix. That ordering means a failure never leaves a code claimed in
@@ -195,7 +210,19 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/registry.sh" set "<absolute-path>" optimized
 ```
 
 Record nothing only when the user reviewed a real plan and declined all of it —
-that deliberately leaves the offer live. A project already in good shape is
+that deliberately leaves the offer live.
+
+When the issue-tracking area was proposed and the user declined **that item** while
+approving others, record the decline in the companion registry too, so it is not
+re-asked (the hook keys off this plugin's registry, but a later `linear-track` run
+should see the choice):
+
+```bash
+REG="$HOME/.claude/linear-sync/registry.json"; DIR="<absolute-path>"; tmp="$(mktemp)"
+[ -f "$REG" ] && jq --arg p "$DIR" --arg slug "$(basename "$DIR")" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '.projects[$p] = ((.projects[$p] // {}) + {slug:$slug, status:"declined", createdAt:$now})' \
+  "$REG" > "$tmp" && mv "$tmp" "$REG"
+``` A project already in good shape is
 recorded as `optimized`; otherwise the hook re-offers it every session forever.
 
 Close with a short summary of what changed, what was skipped and why, and any

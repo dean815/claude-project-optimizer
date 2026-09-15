@@ -176,6 +176,33 @@ for d in "$HOME" "$HOME/Downloads" /tmp /private/tmp "$HOME/.claude"; do
   assert "$([ -z "$OUT" ] && echo true || echo false)" "hook is silent in $d"
 done
 
+# Worktrees belong to their parent. A session opening in a linked worktree must
+# be offered under the PARENT path (about half of all sessions on a
+# worktree-heavy setup start there — skipping them hid the offer for weeks), and
+# recording the parent must silence the worktree.
+WT="$HOOK_REPO/.claude/worktrees/scratch"
+git -C "$HOOK_REPO" worktree add -q "$WT" -b wt-test >/dev/null 2>&1
+OUT="$(echo "{\"cwd\":\"$WT\",\"source\":\"startup\"}" | bash "$ROOT/scripts/session-start.sh")"
+assert "$([ -n "$OUT" ] && echo true || echo false)" "hook fires in a linked worktree"
+assert "$(printf '%s' "$OUT" | grep -q "($HOOK_REPO)" && echo true || echo false)" \
+  "worktree offer names the parent repo path"
+assert "$(printf '%s' "$OUT" | grep -q "worktree ($WT)" && echo true || echo false)" \
+  "worktree offer says which worktree it came from"
+bash "$ROOT/scripts/registry.sh" set "$HOOK_REPO" declined >/dev/null
+OUT="$(echo "{\"cwd\":\"$WT\",\"source\":\"startup\"}" | bash "$ROOT/scripts/session-start.sh")"
+assert "$([ -z "$OUT" ] && echo true || echo false)" "recording the parent silences its worktree"
+bash "$ROOT/scripts/registry.sh" remove "$HOOK_REPO" >/dev/null
+git -C "$HOOK_REPO" worktree remove --force "$WT" >/dev/null 2>&1
+
+# The offer must be raised after the first request, never dropped because the
+# session opened with a task — that clause made it silently repeat forever.
+grep -qiE 'already mid-task, stay silent' "$ROOT/scripts/session-start.sh" \
+  && bad "offer text no longer tells the model to stay silent mid-task" \
+  || ok "offer text no longer tells the model to stay silent mid-task"
+OUT="$(echo "{\"cwd\":\"$HOOK_REPO\",\"source\":\"startup\"}" | bash "$ROOT/scripts/session-start.sh")"
+assert "$(printf '%s' "$OUT" | grep -q 'handle that request first' && echo true || echo false)" \
+  "offer text defers to after the first request"
+
 # The offer must not hardcode a personal name or gendered pronouns.
 grep -qE '\bDean\b|\bhe\b|\bhis\b' "$ROOT/scripts/session-start.sh" \
   && bad "hook text is audience-neutral" \
