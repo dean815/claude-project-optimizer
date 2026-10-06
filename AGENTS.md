@@ -1,7 +1,5 @@
 # project-optimizer
 
-> **Codex mirror of `CLAUDE.md`.** Refresh this file whenever `CLAUDE.md` changes; edit `CLAUDE.md`, never this copy alone.
-
 A Claude Code plugin that onboards new project directories. The SessionStart
 hook offers onboarding once per directory; the skills do the work.
 
@@ -81,6 +79,4 @@ breaks both — update the `${CLAUDE_PLUGIN_ROOT}/references/…` pointers in ea
 - Never put `die`/`exit` in a function called from a command substitution — it
   kills only the subshell and the caller continues with an empty value.
 
-## Working guidelines
-
-`CLAUDE.md` pulls in `.claude/dean-guidelines.md` with an `@` import, which Codex does not resolve. Read that file before starting work and follow it.
+Read `.claude/dean-guidelines.md` before starting work and follow it. Claude Code loads it automatically through `CLAUDE.md`; other agents must open it themselves.
