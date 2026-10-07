@@ -1,11 +1,9 @@
 {
   "enabledPlugins": {
-    "superpowers@claude-plugins-official": true,
     "feature-dev@claude-plugins-official": true,
     "commit-commands@claude-plugins-official": true,
     "code-review@claude-plugins-official": true,
     "project-artifact@claude-plugins-official": true,
-    "andrej-karpathy-skills@karpathy-skills": true,
     "plugin-dev@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
     "hookify@claude-plugins-official": true,
@@ -14,14 +12,6 @@
     "playwright@claude-plugins-official": false,
     "airtable@claude-plugins-official": false,
     "notion@claude-plugins-official": false
-  },
-  "extraKnownMarketplaces": {
-    "karpathy-skills": {
-      "source": {
-        "source": "github",
-        "repo": "forrestchang/andrej-karpathy-skills"
-      }
-    }
   },
   "permissions": {
     "allow": [
@@ -84,11 +74,6 @@
       "Bash(python3 -m pip list*)",
       "Bash(python3 -m pip show *)",
       "Bash(python3 -c *)",
-      "Bash(npx gsd-core *)",
-      "Read(.planning/*)",
-      "Edit(.planning/*)",
-      "Read(STATE.md)",
-      "Edit(STATE.md)",
       "Bash(uv sync*)",
       "Bash(uv run*)",
       "Bash(pytest*)",
