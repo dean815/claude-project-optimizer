@@ -13,3 +13,5 @@ node_modules/
 
 # Test fixtures
 .test-tmp/
+# Dean's personal guidelines stay local in public repos
+.claude/dean-guidelines.md
