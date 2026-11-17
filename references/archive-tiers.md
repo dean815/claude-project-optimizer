@@ -106,7 +106,7 @@ reuse the name.
 Locate by the `cwd` recorded inside each transcript, which `archive-preflight.sh`
 already does. **Never reverse the encoded directory name** — hyphens in a project
 name are indistinguishable from path separators, so
-`-Users-deanhicks-claude-career-ops-private` has several plausible readings and
+`-Users-you-claude-my-side-project` has several plausible readings and
 no way to choose between them.
 
 Worktree sessions are recorded under their own encoded directories with a `cwd`
