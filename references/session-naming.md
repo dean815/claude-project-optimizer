@@ -59,7 +59,7 @@ those lists are provenance only, but they record which codes are authoritative.
 ```json
 {
   "shortnames": {
-    "/Users/deanhicks/claude/new-project": "NEWP"
+    "/Users/you/claude/new-project": "NEWP"
   }
 }
 ```
